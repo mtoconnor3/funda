@@ -2,7 +2,7 @@
 from scraperUtil import *
 
 # The initial funda search we want to scrape in its entirety
-funda = "https://www.funda.nl/koop/amsterdam/25+woonopp/appartement/1+kamers/"
+funda = "https://www.funda.nl/koop/gemeente-amsterdam/verkocht/300000-700000/sorteer-afmelddatum-af/"
 
 # Configure selenium to mimic a normal computer browser
 opts = Options()
@@ -31,12 +31,11 @@ for listing in get_listings(html_source):
 	listings.append(get_listing_data(listing))
 
 # loop over every subsequent page, and extract the listing data
-for page in page_links:
+for page in page_links[10:]:
 	print "getting page %s" % page
 	browser.get(page)  
-	sleep(3)
+	sleep(1)
 	html_source = browser.page_source  
-
 	# Check for bot detection at each page load
 	while caught_by_bot(html_source):
 		print "\nSleeping till the captcha is solved.\n"
@@ -46,10 +45,23 @@ for page in page_links:
 	for listing in get_listings(html_source):
 		listings.append(get_listing_data(listing))
 
-# close the browser and save the results
-browser.quit()
+
+# close the browser and
 df = pandas.DataFrame(listings)
+listings = list(df['href'])
+listingDetails = []
+for page in listings[:20]:
+	browser.get(page)
+	l = listing_page(browser)
+	listingDetails.append(l.data)
+	# not trying to be a jerk here, ya know. 
+	sleep(1.5)
+
+browser.quit()
+
+# Save the file
 destination_directory = "~/Documents/"
 filename = destination_directory+namefile()
-df.to_csv(filename, sep = ",", encoding = 'utf-16')
+df.to_csv(filename, sep = ",", encoding = 'utf-16', index = False)
+df.to_csv("details"+filename, sep = ",", encoding = 'utf-16', index = False)
 

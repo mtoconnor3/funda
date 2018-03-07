@@ -6,6 +6,7 @@ from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
 from time import sleep
 import datetime
+import pandas
 
 # for use in the file naming function
 now = datetime.datetime.now()
@@ -113,3 +114,24 @@ def get_listing_data(listing, verbose = False):
 def namefile():
 	date = now.strftime("%Y_%m_%d")
 	return "funda_scrape_"+str(date)+".csv"
+
+
+class listing_page:
+	def __init__(self, browser):
+			self.soup = BeautifulSoup(browser.page_source, 'html.parser')
+			while self.caught_by_bot():
+				print "sleeping until captcha is solved"
+				sleep (15)
+				self.soup = BeautifulSoup(browser.page_source, 'html.parser')
+	#def get_listing_data(self):
+			headers = [element.text.strip() for element in self.soup.find_all('dt')]
+			values = [element.text.strip() for element in self.soup.find_all('dd')]
+			self.data = dict(zip(headers,values))
+	def caught_by_bot(self):
+			print "checking for bot detection"
+			try:
+				return self.soup.find('h1', {'class':'app-error-hero-title'}).text == "We denken dat je een robot bent"
+				print "\nbot detection!,"
+			except:
+				return False
+
