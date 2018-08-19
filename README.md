@@ -21,4 +21,4 @@ A generic set of scraper utils for pulling down listing data from funda.nl
 3. Once all links are recorded:
 	- Close browser session
 	- Write listings data to a CSV file using pandas, with filename = today's date. 
-
+ 
