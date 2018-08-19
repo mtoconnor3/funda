@@ -1,4 +1,4 @@
-# necessary libraries
+# Necessary libraries
 from selenium import webdriver  
 from selenium.common.exceptions import NoSuchElementException  
 from selenium.webdriver.common.keys import Keys  
@@ -6,118 +6,105 @@ from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
 from time import sleep
 import datetime
-import pandas
+from pandas import DataFrame as df
 
-# for use in the file naming function
+# For use in the file naming function
 now = datetime.datetime.now()
 
-# Read the source to see if there's bot detection happening. 
-def caught_by_bot(page_source):
-	soup = BeautifulSoup(page_source, 'html.parser')
-	print "checking for bot detection"
-	try:
-		return soup.find('h1', {'class':'app-error-hero-title'}).text == "We denken dat je een robot bent"
-		print "\nbot detection!"
-	except:
-		return False
+class search_results_page:
+	def __init__(self, browser):
+			self.html_source = browser.page_source
+			self.soup = BeautifulSoup(self.html_source, 'html.parser')
+			self.url = browser.current_url
+			while self.caught_by_bot():
+				print "\nBot detection!"
+				sleep (15)
+				self.html_source = browser.page_source
+			#self.soup = BeautifulSoup(self.html_source, 'html.parser')
+			self.get_listings()
+	def caught_by_bot(self):
+			print "checking for bot detection on %s" %self.url
+			self.soup = BeautifulSoup(self.html_source, 'html.parser')
+			try:
+				return self.soup.find('h1', {'class':'app-error-hero-title'}).text == "We denken dat je een robot bent"
+				print "\nbot detection!"
+			except:
+				return False
+	def get_listings(self):
+			self.listings = self.soup.find_all('div', {'class':'search-result-content-inner'})
+	def get_pagination(self):
+			pagination = self.soup.find('div', {'class':'pagination-pages'}).find_all('a')
+			pages = int(pagination[-1].text.split()[1])
+			self.pagelist = []
+			for i in range(2,pages+1):
+				tail = "p%d/" % (i)
+				href = self.url+tail
+				self.pagelist.append(href)
 
-# figure out how many pages we need to scrape
-def get_pagination(page_source):
-	soup = BeautifulSoup(page_source, 'html.parser')
-	pagination = soup.find('div', {'class':'pagination-pages'}).find_all('a')
-	return int(pagination[-1].text.split()[1])
+class search_result:
+	def __init__(self, listing):
+		self.listing = listing
+		self.listing_data = self.get_listing_data()
+	def get_listing_address(self):
+			title = self.listing.find('h3', {'class':'search-result-title'}).text
+			title = " ".join(title.split())
+			return title	
+	def get_listing_price(self):
+			price = self.listing.find('span', {'class':'search-result-price'}).text
+			return int(price.split()[1].replace(".",""))	
+	def get_listing_sqm(self):
+			sqm = self.listing.find('ul', {'class': 'search-result-kenmerken'})
+			sqm = sqm.find('span', {'title': 'Woonoppervlakte'}).text
+			return int(sqm.split()[0])	
+	def get_listing_parcel(self):
+			parcel = self.listing.find('ul', {'class': 'search-result-kenmerken'})
+			parcel = parcel.find('li').find_all('span')[0].text
+			return int(parcel.split()[0])	
+	def get_listing_rooms(self):
+			rooms = self.listing.find('ul', {'class': 'search-result-kenmerken'})
+			rooms = rooms.find_all('li')[1].text
+			return int(rooms.split()[0])	
+	def get_listing_href(self):
+			link = self.listing.find('div', {'class':'search-result-header'}).find('a')['href']
+			return link 
+	# put all of the above to work for you:	
+	def get_listing_data(self, verbose = True):
+		try:
+			address = self.get_listing_address()
+		except:
+			print 'missing address'
+			address = None
+		try:
+			price = self.get_listing_price()
+		except:
+			print 'missing price'
+			price = None
+		try:
+			sqm = self.get_listing_sqm()
+		except:
+			print 'missing sqm'
+			price = None
+		try:
+			parcel = self.get_listing_parcel()
+		except:
+			print 'missing parcel'
+			price = None
+		try:
+			rooms = self.get_listing_rooms()
+		except:
+			print 'missing rooms'
+			price = None
+		try:
+			href = self.get_listing_href()
+		except:
+			print 'missing href'
+			price = None
+		return {'href':href, 'address':address, 'price':price, 'sqm':sqm, 'parcel':parcel,'rooms':rooms}
 
-# Build urls for each page to scrape, using the pagination to construct them
-def page_builder(pages, stem):
-	pagelist = []
-	for i in range(2,pages+1):
-		tail = "p%d/" % (i)
-		href = stem+tail
-		pagelist.append(href)
-	return pagelist
-
-# Get the array of listings in the HTML
-def get_listings(page_source):
-	soup = BeautifulSoup(page_source, 'html.parser')
-	listings = soup.find_all('div', {'class':'search-result-content-inner'})
-	return listings
-
-# extract data from each idividual listing
-def get_listing_address(listing):
-	title = listing.find('h3', {'class':'search-result-title'}).text
-	title = " ".join(title.split())
-	return title
-
-def get_listing_price(listing):
-	price = listing.find('span', {'class':'search-result-price'}).text
-	return int(price.split()[1].replace(".",""))
-
-def get_listing_sqm(listing):
-	sqm = listing.find('ul', {'class': 'search-result-kenmerken'})
-	sqm = sqm.find_all('span', {'title': 'Woonoppervlakte'})[0].text
-	return int(sqm.split()[0])
-
-def get_listing_parcel(listing):
-	parcel = listing.find('ul', {'class': 'search-result-kenmerken'})
-	parcel = parcel.find('li').find_all('span')[1].text
-	return int(parcel.split()[0])
-
-def get_listing_rooms(listing):
-	rooms = listing.find('ul', {'class': 'search-result-kenmerken'})
-	rooms = rooms.find_all('li')[1].text
-	return int(rooms.split()[0])
-
-def get_listing_href(listing):
-	href = listing.find_all('div', {'class':'search-result-header'})[0].find('a')['href']
-	return href 
-
-# put all of the above to work for you:
-def get_listing_data(listing, verbose = False):
-	try: 
-		address = get_listing_address(listing)
-	except:
-		if verbose:
-			print "no address found for this listing"
-		address = None
-	try:
-		price = get_listing_price(listing)
-	except: 
-		if verbose:
-			print "no price found for this listing: %s" %address 
-		price = None
-	try:
-		sqm = get_listing_sqm(listing)
-	except:
-		if verbose:
-			print "no sqm found for this listing: %s" %address 
-		sqm = None 
-	try:
-		parcel = get_listing_parcel(listing)
-	except:
-		if verbose:
-			print "no parcel info found for this listing: %s" %address 
-		parcel = None
-	try: 
-		rooms = get_listing_rooms(listing)
-	except:
-		if verbose:
-			print "no rooms data found for this listing: %s" %address 
-		rooms = None
-	try:
-		href = get_listing_href(listing)
-	except:
-		if verbose:
-			print "no href found for this listing: %s" %address 
-	return {'href':href, 'address':address, 'price':price, 'sqm':sqm, 'parcel':parcel,'rooms':rooms}
-
-# filename builder
-def namefile():
-	date = now.strftime("%Y_%m_%d")
-	return "funda_scrape_"+str(date)+".csv"
-
-
+# this is kind of a brute-force method for extracting data, but it works. 
 class listing_page:
 	def __init__(self, browser):
+			self.keys = ["Aangeboden sinds", "Aantal badkamers", "Aantal kamers", "Aantal woonlagen", "Aanvaarding", "Achtertuin", "Badkamervoorzieningen", "Balkon/dakterras", "Bijdrage VvE", "Bouwjaar", "Capaciteit", "Cv-ketel", "Eigendomssituatie", "Energielabel", "Externe bergruimte", "Gebouwgebonden buitenruimte", "Gelegen op", "Inhoud", "Inschrijving KvK", "Isolatie", "Jaarlijkse vergadering", "Laatste vraagprijs", "Lasten", "Ligging", "Ligging tuin", "Looptijd", "Onderhoudsplan", "Oppervlakte", "Opstalverzekering", "Overige inpandige ruimte", "Perceeloppervlakte", "Periodieke bijdrage", "Reservefonds aanwezig", "Schuur/berging", "Soort appartement", "Soort bouw", "Soort dak", "Soort garage", "Soort parkeergelegenheid", "Soort woonhuis", "Specifiek", "Status", "Tuin", "Verkoopdatum", "Verwarming", "Voorlopig energielabel", "Voorzieningen", "Vraagprijs", "Warm water", "Woonoppervlakte"]
 			self.soup = BeautifulSoup(browser.page_source, 'html.parser')
 			while self.caught_by_bot():
 				print "sleeping until captcha is solved"
@@ -127,6 +114,7 @@ class listing_page:
 			headers = [element.text.strip() for element in self.soup.find_all('dt')]
 			values = [element.text.strip() for element in self.soup.find_all('dd')]
 			self.data = dict(zip(headers,values))
+			self.data = {k:self.data[k] for k in self.keys if k in self.data}
 	def caught_by_bot(self):
 			print "checking for bot detection"
 			try:
@@ -135,3 +123,7 @@ class listing_page:
 			except:
 				return False
 
+# filename builder
+def namefile():
+		date = now.strftime("%Y_%m_%d")
+		return "funda_scrape_"+str(date)+".csv"

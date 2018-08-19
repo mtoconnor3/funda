@@ -1,67 +1,61 @@
-# import the utilities from the other file
-from scraperUtil import *
+from scraperUtil2 import *
 
-# The initial funda search we want to scrape in its entirety
-funda = "https://www.funda.nl/koop/gemeente-amsterdam/verkocht/300000-700000/sorteer-afmelddatum-af/"
+funda = "https://www.funda.nl/koop/amsterdam/0-51-woonopp/appartement/"
 
 # Configure selenium to mimic a normal computer browser
+
 opts = Options()
-opts.add_argument("user-agent=Mozillaaaaa/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Trident/5.0)")
-browser = webdriver.Chrome(chrome_options=opts)
-browser.manage().timeouts().pageLoadTimeout(15, TimeUnit.SECONDS)
+opts.add_argument("user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36")
+browser = webdriver.Chrome('/usr/local/bin/chromedriver', chrome_options=opts)
+browser.set_page_load_timeout(30)
 
 # Get the first page of the search, and wait for the javascript to render
+
+browser.get('http://www.funda.nl')
 browser.get(funda)  
 sleep(5)
+sr = search_results_page(browser)
 
-# Extract the html from the rendered page and check for bot detection
-html_source = browser.page_source  
-while caught_by_bot(html_source):
-	print "sleeping till the captcha is solved"
-	sleep(15)
-	html_source = browser.page_source
+# Past bot detection? get the pagination
 
-# Once the bot detection has been defeated, build pagination and links
-pageNumber = get_pagination(html_source)
-page_links = page_builder(pageNumber, funda)
+sr.get_pagination()
+links = sr.pagelist
 
-# Extract the first page of listings
-listings = []
-for listing in get_listings(html_source):
-	listings.append(get_listing_data(listing))
+# create the array with data in it
 
-# loop over every subsequent page, and extract the listing data
-for page in page_links[10:]:
-	print "getting page %s" % page
-	browser.get(page)  
-	sleep(1)
-	html_source = browser.page_source  
-	# Check for bot detection at each page load
-	while caught_by_bot(html_source):
-		print "\nSleeping till the captcha is solved.\n"
-		sleep(5)
-		html_source = browser.page_source
-	# Extract listing data from the rendered html
-	for listing in get_listings(html_source):
-		listings.append(get_listing_data(listing))
+listingData = [search_result(listing).listing_data for listing in sr.listings]
+# loop over remaining links
 
+for page in links:
+	browser.get(page) 
+	sr = search_results_page(browser)
+	for listing in sr.listings:	
+		try:
+			listingData.append(search_result(listing).listing_data)
+		except: 
+			print "invalid record"
+			pass
 
-# close the browser and
-df = pandas.DataFrame(listings)
-listings = list(df['href'])
+listingLinks = [d['href'] for d in listingData]
+listingAddresses = list(df['address'])
+
+# this bit will take a while, so buckle up
+
 listingDetails = []
-for page in listings[:20]:
-	browser.get(page)
-	l = listing_page(browser)
-	listingDetails.append(l.data)
+for i in range(0,len(listingLinks)):
+	
+	print "%s getting %s" %(i, listingLinks[i])
+	try:
+		browser.get(listingLinks[i])
+		l = listing_page(browser)
+		l.data['address']= listingAddresses[i]
+		listingDetails.append(l.data)
+	except:
+		print 'Exception - moving on to the next listing'
+		pass
 	# not trying to be a jerk here, ya know. 
 	sleep(1.5)
 
-browser.quit()
-
-# Save the file
-destination_directory = "~/Documents/"
-filename = destination_directory+namefile()
-df.to_csv(filename, sep = ",", encoding = 'utf-16', index = False)
-df.to_csv("details"+filename, sep = ",", encoding = 'utf-16', index = False)
+data2 = df(listingDetails)
+data2.to_csv(namefile(), sep = ',', encoding = 'utf-16', index = False)
 
